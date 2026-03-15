@@ -184,6 +184,7 @@ func (f *gitConfigFile) RemoveSection(section, subsection string) bool {
 }
 
 // Bytes serializes the config file back to bytes, preserving original formatting.
+// The output always ends with a trailing newline to match git's convention.
 func (f *gitConfigFile) Bytes() []byte {
 	var buf bytes.Buffer
 	for i, cl := range f.lines {
@@ -191,6 +192,10 @@ func (f *gitConfigFile) Bytes() []byte {
 			buf.WriteByte('\n')
 		}
 		buf.WriteString(cl.raw)
+	}
+	// Ensure trailing newline — git always writes config files with one.
+	if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+		buf.WriteByte('\n')
 	}
 	return buf.Bytes()
 }

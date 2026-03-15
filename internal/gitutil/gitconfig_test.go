@@ -156,17 +156,21 @@ func TestRemoveSectionNonexistent(t *testing.T) {
 }
 
 func TestBytesPreservesComments(t *testing.T) {
-	input := `# top comment
-[core]
-	bare = false
-; another comment
-
-[filter "git-crypt"]
-	smudge = encrypten smudge`
+	input := "# top comment\n[core]\n\tbare = false\n; another comment\n\n[filter \"git-crypt\"]\n\tsmudge = encrypten smudge\n"
 	f := parseGitConfigFile([]byte(input))
 	out := string(f.Bytes())
 	if out != input {
-		t.Errorf("Bytes() changed content.\nGot:\n%s\nWant:\n%s", out, input)
+		t.Errorf("Bytes() changed content.\nGot:\n%q\nWant:\n%q", out, input)
+	}
+}
+
+func TestBytesAddsTrailingNewline(t *testing.T) {
+	input := "[core]\n\tbare = false"
+	f := parseGitConfigFile([]byte(input))
+	out := string(f.Bytes())
+	want := input + "\n"
+	if out != want {
+		t.Errorf("Bytes() = %q, want %q", out, want)
 	}
 }
 
