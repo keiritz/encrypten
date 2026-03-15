@@ -3,6 +3,7 @@ package gitutil
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -53,23 +54,59 @@ func GitDir(dir string) (string, error) {
 	return filepath.Clean(p), nil
 }
 
+// ResolvedPaths holds the three paths returned by a single git rev-parse call.
+type ResolvedPaths struct {
+	GitDir    string
+	CommonDir string
+	RepoRoot  string
+}
+
+// ResolveAll runs a single "git rev-parse --git-dir --git-common-dir --show-toplevel"
+// and returns all three paths. Relative paths are resolved relative to dir.
+func ResolveAll(dir string) (ResolvedPaths, error) {
+	cmdArgs := []string{"rev-parse", "--git-dir", "--git-common-dir", "--show-toplevel"}
+	cmd := exec.Command("git", cmdArgs...) // #nosec G204
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ResolvedPaths{}, err
+	}
+
+	lines := strings.SplitN(strings.TrimRight(string(out), "\n"), "\n", 3)
+	if len(lines) != 3 {
+		return ResolvedPaths{}, fmt.Errorf("git rev-parse: expected 3 lines, got %d", len(lines))
+	}
+
+	resolve := func(p string) string {
+		p = filepath.FromSlash(p)
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(dir, p)
+		}
+		return filepath.Clean(p)
+	}
+
+	return ResolvedPaths{
+		GitDir:    resolve(lines[0]),
+		CommonDir: resolve(lines[1]),
+		RepoRoot:  resolve(lines[2]),
+	}, nil
+}
+
 // IsWorktree returns true if dir is inside a secondary worktree
 // (i.e., --git-dir differs from --git-common-dir).
 func IsWorktree(dir string) (bool, error) {
-	gitDir, err := GitDir(dir)
-	if err != nil {
-		return false, err
-	}
-	commonDir, err := GitCommonDir(dir)
+	paths, err := ResolveAll(dir)
 	if err != nil {
 		return false, err
 	}
 	// Resolve symlinks for reliable comparison (macOS /tmp → /private/tmp).
-	gitDirReal, err := filepath.EvalSymlinks(gitDir)
+	gitDirReal, err := filepath.EvalSymlinks(paths.GitDir)
 	if err != nil {
 		return false, err
 	}
-	commonDirReal, err := filepath.EvalSymlinks(commonDir)
+	commonDirReal, err := filepath.EvalSymlinks(paths.CommonDir)
 	if err != nil {
 		return false, err
 	}
