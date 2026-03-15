@@ -94,6 +94,13 @@ func setupUnlockTest(t *testing.T) (string, string, string) {
 		_ = unsetCmd.Run() // ignore if section doesn't exist
 	}
 
+	// Remove the file before checkout to avoid racy-git: if the commit
+	// and checkout happen within the same filesystem timestamp granularity,
+	// git may consider the working-tree file "clean" based on cached stat
+	// info and skip overwriting it, leaving plaintext instead of the
+	// encrypted blob content.
+	_ = os.Remove(filepath.Join(repoDir, "secret.txt"))
+
 	// Force checkout without filter to get raw encrypted content in working tree.
 	checkoutCmd := exec.Command("git", "checkout", "-f") //nolint:gosec // test args
 	checkoutCmd.Dir = repoDir
@@ -293,24 +300,18 @@ func TestUnlockWrongKey(t *testing.T) {
 		t.Fatalf("export-key from other repo failed: %v\n%s", err, out)
 	}
 
-	// Unlock with the wrong key — the smudge filter will fail with HMAC mismatch,
-	// causing checkout to fail and triggering rollback.
+	// Unlock with the wrong key — transformDecrypt should fail with HMAC mismatch.
 	unlockCmd := exec.Command(bin, "unlock", wrongKey) //nolint:gosec // test binary
 	unlockCmd.Dir = repoDir
 	unlockCmd.Env = envWithBinDir(binDir)
 	out, err := unlockCmd.CombinedOutput()
 
 	if err != nil {
-		// Unlock failed (expected — HMAC validation rejects the wrong key).
-		// Filter and key are intentionally NOT rolled back to avoid
-		// destroying shared state used by concurrent worktrees.
-		// The filter and key remain but the files stay encrypted,
-		// which is a safe state (a subsequent lock or correct unlock works).
+		// Expected: HMAC validation rejects the wrong key.
 		return
 	}
 
-	// If unlock succeeded (git checkout didn't fail), the file should not
-	// be correctly decrypted.
+	// If unlock succeeded, the file should not be correctly decrypted.
 	content, err := os.ReadFile(filepath.Join(repoDir, "secret.txt")) //nolint:gosec // test path
 	if err != nil {
 		t.Fatalf("reading secret.txt: %v", err)
