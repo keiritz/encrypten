@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - gosec
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+  exclusions:
+    paths:
+      - testdata
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

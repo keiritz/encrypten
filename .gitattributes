@@ -1,0 +1,3 @@
+testdata/fixtures/*.bin binary
+testdata/fixtures/*.txt binary
+testdata/fixtures/key_default binary
