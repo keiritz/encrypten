@@ -122,6 +122,103 @@ func TestListWorktrees(t *testing.T) {
 	}
 }
 
+func TestResolveAll(t *testing.T) {
+	dir := initTestRepo(t)
+
+	paths, err := gitutil.ResolveAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths.RepoRoot != dir {
+		t.Errorf("RepoRoot = %q, want %q", paths.RepoRoot, dir)
+	}
+	wantGitDir := filepath.Join(dir, ".git")
+	if paths.GitDir != wantGitDir {
+		t.Errorf("GitDir = %q, want %q", paths.GitDir, wantGitDir)
+	}
+	if paths.CommonDir != wantGitDir {
+		t.Errorf("CommonDir = %q, want %q", paths.CommonDir, wantGitDir)
+	}
+}
+
+func TestResolveAllWorktree(t *testing.T) {
+	main := initTestRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+
+	wtParent, err := filepath.EvalSymlinks(filepath.Dir(wt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt = filepath.Join(wtParent, filepath.Base(wt))
+
+	run(t, main, "git", "worktree", "add", wt, "-b", "test-resolve-wt")
+
+	paths, err := gitutil.ResolveAll(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths.RepoRoot != wt {
+		t.Errorf("RepoRoot = %q, want %q", paths.RepoRoot, wt)
+	}
+	// In a worktree, GitDir should differ from CommonDir.
+	if paths.GitDir == paths.CommonDir {
+		t.Errorf("expected GitDir != CommonDir in worktree, both = %q", paths.GitDir)
+	}
+	wantCommon := filepath.Join(main, ".git")
+	if paths.CommonDir != wantCommon {
+		t.Errorf("CommonDir = %q, want %q", paths.CommonDir, wantCommon)
+	}
+}
+
+// initBenchRepo creates a temporary git repo for benchmarks.
+func initBenchRepo(b *testing.B) string {
+	b.Helper()
+	dir := b.TempDir()
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@test.com"},
+		{"config", "user.name", "Test"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...) //nolint:gosec // benchmark helper
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			b.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	return dir
+}
+
+// BenchmarkResolveAll benchmarks the batched single-process approach.
+func BenchmarkResolveAll(b *testing.B) {
+	dir := initBenchRepo(b)
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := gitutil.ResolveAll(dir); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkSeparateCalls benchmarks the old two-process approach
+// (GitDir + GitCommonDir called separately).
+func BenchmarkSeparateCalls(b *testing.B) {
+	dir := initBenchRepo(b)
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := gitutil.GitDir(dir); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := gitutil.GitCommonDir(dir); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestKeyDirWorktree(t *testing.T) {
 	main := initTestRepo(t)
 	wt := filepath.Join(t.TempDir(), "wt")
