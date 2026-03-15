@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/keiritz/encrypten/internal/crypto"
+	"github.com/keiritz/encrypten/internal/fileformat"
 	"github.com/keiritz/encrypten/internal/gitutil"
 	"github.com/keiritz/encrypten/internal/keyfile"
 )
@@ -139,10 +141,10 @@ func unlockMain(dir, keyFilePath string) error {
 	// Remove per-WT override if present (from previous lockMain).
 	_ = gitutil.UnsetFilterWorktree(dir)
 
-	// Force re-checkout to trigger the smudge filter for decryption.
+	// Decrypt files in-place.
 	// No rollback of key/filter on failure — removing shared state
 	// during concurrent operations would break other worktrees.
-	if err := recheckout(dir); err != nil {
+	if err := transformDecrypt(dir); err != nil {
 		return err
 	}
 
@@ -185,10 +187,52 @@ func unlockWorktree(dir string, args []string) error {
 		return fmt.Errorf("removing worktree filter override: %w", err)
 	}
 
-	// Force re-checkout to trigger the smudge filter.
-	if err := recheckout(dir); err != nil {
+	// Decrypt files in-place.
+	if err := transformDecrypt(dir); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// transformDecrypt decrypts tracked files in-place.
+func transformDecrypt(dir string) error {
+	entries, err := gitutil.ListEncryptedFiles(dir)
+	if err != nil {
+		return fmt.Errorf("listing encrypted files: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	key, err := loadDefaultKey(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Path)
+		info, err := os.Stat(p)
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", e.Path, err)
+		}
+		data, err := os.ReadFile(p) //nolint:gosec // path from git-tracked file list
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", e.Path, err)
+		}
+		if !fileformat.IsEncrypted(data) {
+			continue // already decrypted
+		}
+		dec, err := crypto.Decrypt(data, key)
+		if err != nil {
+			return fmt.Errorf("decrypting %s: %w", e.Path, err)
+		}
+		if err := os.WriteFile(p, dec, info.Mode()); err != nil { //nolint:gosec // path from git-tracked file list
+			return fmt.Errorf("writing %s: %w", e.Path, err)
+		}
+	}
+
+	// Refresh the git index so the working tree appears clean after
+	// in-place transformation.
+	return refreshIndex(dir, entries)
 }
