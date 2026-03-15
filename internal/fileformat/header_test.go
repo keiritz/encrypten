@@ -115,6 +115,54 @@ func TestParseHeader(t *testing.T) {
 	})
 }
 
+func TestIsEncryptedFile(t *testing.T) {
+	t.Run("encrypted", func(t *testing.T) {
+		got, err := fileformat.IsEncryptedFile(filepath.Join(fixtureDir, "encrypted.bin"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Error("IsEncryptedFile(encrypted.bin) = false, want true")
+		}
+	})
+
+	t.Run("plaintext", func(t *testing.T) {
+		got, err := fileformat.IsEncryptedFile(filepath.Join(fixtureDir, "plain.txt"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got {
+			t.Error("IsEncryptedFile(plain.txt) = true, want false")
+		}
+	})
+
+	t.Run("nonexistent", func(t *testing.T) {
+		got, err := fileformat.IsEncryptedFile(filepath.Join(fixtureDir, "nonexistent"))
+		if err == nil {
+			t.Fatal("expected error for nonexistent file")
+		}
+		if got {
+			t.Error("IsEncryptedFile(nonexistent) = true, want false")
+		}
+	})
+
+	t.Run("short_file", func(t *testing.T) {
+		f, err := os.CreateTemp(t.TempDir(), "short")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.Write([]byte("hi"))
+		_ = f.Close()
+		got, err := fileformat.IsEncryptedFile(f.Name())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got {
+			t.Error("IsEncryptedFile(short) = true, want false")
+		}
+	})
+}
+
 func TestHeaderSize(t *testing.T) {
 	if fileformat.HeaderSize != 10 {
 		t.Errorf("HeaderSize = %d, want 10", fileformat.HeaderSize)

@@ -1,7 +1,6 @@
 package gitutil
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/keiritz/encrypten/internal/fileformat"
@@ -34,12 +33,12 @@ func DetectEncryptionState(dir string) (RepoEncryptionState, error) {
 
 	var encrypted, decrypted int
 	for _, e := range entries {
-		data, err := os.ReadFile(filepath.Join(dir, e.Path)) //nolint:gosec // path from git ls-files
+		enc, err := fileformat.IsEncryptedFile(filepath.Join(dir, e.Path))
 		if err != nil {
 			// Skip unreadable files (e.g. deleted in worktree).
 			continue
 		}
-		if fileformat.IsEncrypted(data) {
+		if enc {
 			encrypted++
 		} else {
 			decrypted++

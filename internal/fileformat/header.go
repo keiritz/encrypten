@@ -1,6 +1,10 @@
 package fileformat
 
-import "errors"
+import (
+	"errors"
+	"io"
+	"os"
+)
 
 const (
 	// HeaderSize is the length of the magic bytes prefix.
@@ -23,6 +27,22 @@ var (
 type Header struct {
 	Nonce      [NonceSize]byte
 	Ciphertext []byte // slice of input (no copy)
+}
+
+// IsEncryptedFile reports whether the file at path begins with the git-crypt
+// magic bytes, reading only the first HeaderSize bytes.
+func IsEncryptedFile(path string) (bool, error) {
+	f, err := os.Open(path) //nolint:gosec // caller-controlled path
+	if err != nil {
+		return false, err
+	}
+	defer f.Close() //nolint:errcheck // read-only file
+	var buf [HeaderSize]byte
+	_, err = io.ReadFull(f, buf[:])
+	if err != nil {
+		return false, nil // short file = not encrypted
+	}
+	return IsEncrypted(buf[:]), nil
 }
 
 // IsEncrypted reports whether data begins with the git-crypt magic bytes.

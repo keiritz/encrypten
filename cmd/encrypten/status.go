@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/keiritz/encrypten/internal/fileformat"
@@ -23,12 +22,12 @@ func cmdStatus(args []string) error {
 	}
 
 	for _, e := range entries {
-		data, err := os.ReadFile(filepath.Join(root, e.Path)) //nolint:gosec // path from git ls-files
+		enc, err := fileformat.IsEncryptedFile(filepath.Join(root, e.Path))
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", e.Path, err)
 		}
 
-		if fileformat.IsEncrypted(data) {
+		if enc {
 			fmt.Printf("    encrypted: %s\n", e.Path)
 		} else {
 			fmt.Printf("not encrypted: %s\n", e.Path)
