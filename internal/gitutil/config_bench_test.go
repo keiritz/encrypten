@@ -1,34 +1,10 @@
 package gitutil_test
 
 import (
-	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"github.com/keiritz/encrypten/internal/gitutil"
 )
-
-func initBenchRepo(b *testing.B) string {
-	b.Helper()
-	dir := b.TempDir()
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		b.Fatal(err)
-	}
-	dir = resolved
-	for _, args := range [][]string{
-		{"init", dir},
-		{"-C", dir, "config", "user.email", "test@test.com"},
-		{"-C", dir, "config", "user.name", "Test"},
-		{"-C", dir, "commit", "--allow-empty", "-m", "init"},
-	} {
-		cmd := exec.Command("git", args...) //nolint:gosec // bench helper
-		if out, err := cmd.CombinedOutput(); err != nil {
-			b.Fatalf("git %v failed: %v\n%s", args, err, out)
-		}
-	}
-	return dir
-}
 
 func BenchmarkSetFilter(b *testing.B) {
 	dir := initBenchRepo(b)
