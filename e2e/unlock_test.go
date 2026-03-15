@@ -86,8 +86,9 @@ func setupUnlockTest(t *testing.T) (string, string, string) {
 	_ = os.Remove(keyPath)
 	_ = os.RemoveAll(filepath.Join(repoDir, ".git", "git-crypt"))
 
-	// Unset filter config.
-	for _, section := range []string{"filter.git-crypt", "diff.git-crypt"} {
+	// Unset filter config — remove both git-crypt and encrypten sections
+	// since encrypten init registers both filter names.
+	for _, section := range []string{"filter.git-crypt", "diff.git-crypt", "filter.encrypten", "diff.encrypten"} {
 		unsetCmd := exec.Command("git", "config", "--remove-section", section) //nolint:gosec // test args
 		unsetCmd.Dir = repoDir
 		_ = unsetCmd.Run() // ignore if section doesn't exist
