@@ -6,13 +6,13 @@ import (
 	"strings"
 )
 
-// EncryptedFileEntry represents a file with a git-crypt filter attribute.
+// EncryptedFileEntry represents a file with a git-crypt or encrypten filter attribute.
 type EncryptedFileEntry struct {
 	Path    string
 	KeyName string
 }
 
-// ListEncryptedFiles returns files that have filter=git-crypt set in .gitattributes.
+// ListEncryptedFiles returns files that have filter=git-crypt or filter=encrypten set in .gitattributes.
 // It uses git check-attr to let git handle attribute resolution (including
 // nested .gitattributes and glob patterns).
 func ListEncryptedFiles(dir string) ([]EncryptedFileEntry, error) {
@@ -62,14 +62,16 @@ func parseCheckAttrOutput(data []byte) []EncryptedFileEntry {
 	return entries
 }
 
-// parseFilterValue checks if a filter attribute value indicates git-crypt
-// encryption and returns the corresponding entry.
+// parseFilterValue checks if a filter attribute value indicates git-crypt or
+// encrypten encryption and returns the corresponding entry.
 func parseFilterValue(path, value string) (EncryptedFileEntry, bool) {
-	if value == "git-crypt" {
-		return EncryptedFileEntry{Path: path, KeyName: "default"}, true
-	}
-	if keyName, ok := strings.CutPrefix(value, "git-crypt-"); ok {
-		return EncryptedFileEntry{Path: path, KeyName: keyName}, true
+	for _, prefix := range []string{"git-crypt", "encrypten"} {
+		if value == prefix {
+			return EncryptedFileEntry{Path: path, KeyName: "default"}, true
+		}
+		if keyName, ok := strings.CutPrefix(value, prefix+"-"); ok {
+			return EncryptedFileEntry{Path: path, KeyName: keyName}, true
+		}
 	}
 	return EncryptedFileEntry{}, false
 }
