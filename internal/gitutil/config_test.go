@@ -27,14 +27,16 @@ func TestSetFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := configGet(t, dir, "filter.git-crypt.smudge"); got != "encrypten smudge" {
-		t.Errorf("smudge = %q, want %q", got, "encrypten smudge")
-	}
-	if got := configGet(t, dir, "filter.git-crypt.clean"); got != "encrypten clean" {
-		t.Errorf("clean = %q, want %q", got, "encrypten clean")
-	}
-	if got := configGet(t, dir, "filter.git-crypt.required"); got != "true" {
-		t.Errorf("required = %q, want %q", got, "true")
+	for _, section := range []string{"git-crypt", "encrypten"} {
+		if got := configGet(t, dir, "filter."+section+".smudge"); got != "encrypten smudge" {
+			t.Errorf("filter.%s.smudge = %q, want %q", section, got, "encrypten smudge")
+		}
+		if got := configGet(t, dir, "filter."+section+".clean"); got != "encrypten clean" {
+			t.Errorf("filter.%s.clean = %q, want %q", section, got, "encrypten clean")
+		}
+		if got := configGet(t, dir, "filter."+section+".required"); got != "true" {
+			t.Errorf("filter.%s.required = %q, want %q", section, got, "true")
+		}
 	}
 }
 
@@ -45,8 +47,10 @@ func TestSetDiffTextconv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := configGet(t, dir, "diff.git-crypt.textconv"); got != "encrypten diff" {
-		t.Errorf("textconv = %q, want %q", got, "encrypten diff")
+	for _, section := range []string{"git-crypt", "encrypten"} {
+		if got := configGet(t, dir, "diff."+section+".textconv"); got != "encrypten diff" {
+			t.Errorf("diff.%s.textconv = %q, want %q", section, got, "encrypten diff")
+		}
 	}
 }
 
@@ -70,6 +74,10 @@ func TestUnsetFilter(t *testing.T) {
 		"filter.git-crypt.clean",
 		"filter.git-crypt.required",
 		"diff.git-crypt.textconv",
+		"filter.encrypten.smudge",
+		"filter.encrypten.clean",
+		"filter.encrypten.required",
+		"diff.encrypten.textconv",
 	} {
 		cmd := exec.Command("git", "config", "--get", key) //nolint:gosec // test
 		cmd.Dir = dir
@@ -97,8 +105,10 @@ func TestSetFilterIdempotent(t *testing.T) {
 	}
 
 	// Values should still be correct.
-	if got := configGet(t, dir, "filter.git-crypt.smudge"); got != "encrypten smudge" {
-		t.Errorf("smudge = %q, want %q", got, "encrypten smudge")
+	for _, section := range []string{"git-crypt", "encrypten"} {
+		if got := configGet(t, dir, "filter."+section+".smudge"); got != "encrypten smudge" {
+			t.Errorf("filter.%s.smudge = %q, want %q", section, got, "encrypten smudge")
+		}
 	}
 }
 

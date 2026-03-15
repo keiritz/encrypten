@@ -106,6 +106,57 @@ func TestListEncryptedFilesGlob(t *testing.T) {
 	}
 }
 
+func TestListEncryptedFilesEncryptenFilter(t *testing.T) {
+	dir := initTestRepo(t)
+
+	writeFile(t, dir, ".gitattributes", "secret.txt filter=encrypten diff=encrypten\n")
+	writeFile(t, dir, "secret.txt", "secret data")
+	writeFile(t, dir, "plain.txt", "plain data")
+
+	run(t, dir, "git", "add", ".")
+	run(t, dir, "git", "commit", "-m", "add files")
+
+	entries, err := gitutil.ListEncryptedFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	if entries[0].Path != "secret.txt" {
+		t.Errorf("Path = %q, want %q", entries[0].Path, "secret.txt")
+	}
+	if entries[0].KeyName != "default" {
+		t.Errorf("KeyName = %q, want %q", entries[0].KeyName, "default")
+	}
+}
+
+func TestListEncryptedFilesEncryptenNamedKey(t *testing.T) {
+	dir := initTestRepo(t)
+
+	writeFile(t, dir, ".gitattributes", "secret.txt filter=encrypten-mykey diff=encrypten-mykey\n")
+	writeFile(t, dir, "secret.txt", "named key secret")
+
+	run(t, dir, "git", "add", ".")
+	run(t, dir, "git", "commit", "-m", "add named key file")
+
+	entries, err := gitutil.ListEncryptedFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	if entries[0].Path != "secret.txt" {
+		t.Errorf("Path = %q, want %q", entries[0].Path, "secret.txt")
+	}
+	if entries[0].KeyName != "mykey" {
+		t.Errorf("KeyName = %q, want %q", entries[0].KeyName, "mykey")
+	}
+}
+
 func TestListEncryptedFilesNamedKey(t *testing.T) {
 	dir := initTestRepo(t)
 

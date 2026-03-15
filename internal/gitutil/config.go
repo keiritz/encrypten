@@ -59,13 +59,20 @@ func gitConfigGet(dir string, key string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// SetFilter configures the git-crypt filter (smudge, clean, required).
+// filterSections lists the filter name prefixes to configure.
+// Both git-crypt (for backward compatibility) and encrypten are registered.
+var filterSections = []string{"git-crypt", "encrypten"}
+
+// SetFilter configures the git-crypt and encrypten filters (smudge, clean, required).
 // It is idempotent — values that already match are skipped.
 func SetFilter(dir string) error {
-	pairs := []struct{ key, val string }{
-		{"filter.git-crypt.smudge", filterSmudge},
-		{"filter.git-crypt.clean", filterClean},
-		{"filter.git-crypt.required", filterReqd},
+	var pairs []struct{ key, val string }
+	for _, section := range filterSections {
+		pairs = append(pairs,
+			struct{ key, val string }{"filter." + section + ".smudge", filterSmudge},
+			struct{ key, val string }{"filter." + section + ".clean", filterClean},
+			struct{ key, val string }{"filter." + section + ".required", filterReqd},
+		)
 	}
 	for _, p := range pairs {
 		got, err := gitConfigGet(dir, p.key)
@@ -79,26 +86,35 @@ func SetFilter(dir string) error {
 	return nil
 }
 
-// SetDiffTextconv configures the git-crypt diff textconv driver.
-// It is idempotent — the value is skipped if it already matches.
+// SetDiffTextconv configures the git-crypt and encrypten diff textconv drivers.
+// It is idempotent — values that already match are skipped.
 func SetDiffTextconv(dir string) error {
-	got, err := gitConfigGet(dir, "diff.git-crypt.textconv")
-	if err == nil && got == diffTextconv {
-		return nil
+	for _, section := range filterSections {
+		key := "diff." + section + ".textconv"
+		got, err := gitConfigGet(dir, key)
+		if err == nil && got == diffTextconv {
+			continue
+		}
+		if err := gitConfig(dir, key, diffTextconv); err != nil {
+			return err
+		}
 	}
-	return gitConfig(dir, "diff.git-crypt.textconv", diffTextconv)
+	return nil
 }
 
-// UnsetFilter removes both filter.git-crypt and diff.git-crypt sections.
+// UnsetFilter removes filter and diff sections for both git-crypt and encrypten.
 // It is idempotent — missing sections are silently ignored.
 func UnsetFilter(dir string) error {
-	for _, section := range []string{"filter.git-crypt", "diff.git-crypt"} {
-		if err := gitConfig(dir, "--remove-section", section); err != nil {
-			// Exit code 128 means the section doesn't exist; ignore it.
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
-				continue
+	for _, name := range filterSections {
+		for _, kind := range []string{"filter", "diff"} {
+			section := kind + "." + name
+			if err := gitConfig(dir, "--remove-section", section); err != nil {
+				// Exit code 128 means the section doesn't exist; ignore it.
+				if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+					continue
+				}
+				return err
 			}
-			return err
 		}
 	}
 	return nil
@@ -114,60 +130,76 @@ func EnableWorktreeConfig(dir string) error {
 	return gitConfig(dir, "extensions.worktreeConfig", "true")
 }
 
-// SetFilterWorktree sets filter.git-crypt and diff.git-crypt using --worktree scope.
+// SetFilterWorktree sets filter and diff config for both git-crypt and encrypten
+// using --worktree scope.
 func SetFilterWorktree(dir, smudge, clean, required string) error {
 	if err := EnableWorktreeConfig(dir); err != nil {
 		return fmt.Errorf("enabling worktree config: %w", err)
 	}
-	if err := gitConfig(dir, "--worktree", "filter.git-crypt.smudge", smudge); err != nil {
-		return err
-	}
-	if err := gitConfig(dir, "--worktree", "filter.git-crypt.clean", clean); err != nil {
-		return err
-	}
-	if err := gitConfig(dir, "--worktree", "filter.git-crypt.required", required); err != nil {
-		return err
-	}
-	return gitConfig(dir, "--worktree", "diff.git-crypt.textconv", "cat")
-}
-
-// UnsetFilterWorktree removes filter.git-crypt and diff.git-crypt sections
-// from the worktree-specific config.
-func UnsetFilterWorktree(dir string) error {
-	if err := EnableWorktreeConfig(dir); err != nil {
-		return fmt.Errorf("enabling worktree config: %w", err)
-	}
-	for _, section := range []string{"filter.git-crypt", "diff.git-crypt"} {
-		if err := gitConfig(dir, "--worktree", "--remove-section", section); err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
-				continue
-			}
+	for _, section := range filterSections {
+		if err := gitConfig(dir, "--worktree", "filter."+section+".smudge", smudge); err != nil {
+			return err
+		}
+		if err := gitConfig(dir, "--worktree", "filter."+section+".clean", clean); err != nil {
+			return err
+		}
+		if err := gitConfig(dir, "--worktree", "filter."+section+".required", required); err != nil {
+			return err
+		}
+		if err := gitConfig(dir, "--worktree", "diff."+section+".textconv", "cat"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// FilterConfigMatchesGitCrypt checks whether all four git-crypt filter/diff
-// config values match the expected encrypten values.
-func FilterConfigMatchesGitCrypt(dir string) (bool, error) {
-	checks := []struct {
-		key  string
-		want string
-	}{
-		{"filter.git-crypt.smudge", filterSmudge},
-		{"filter.git-crypt.clean", filterClean},
-		{"filter.git-crypt.required", filterReqd},
-		{"diff.git-crypt.textconv", diffTextconv},
+// UnsetFilterWorktree removes filter and diff sections for both git-crypt and
+// encrypten from the worktree-specific config.
+func UnsetFilterWorktree(dir string) error {
+	if err := EnableWorktreeConfig(dir); err != nil {
+		return fmt.Errorf("enabling worktree config: %w", err)
 	}
-	for _, c := range checks {
-		got, err := gitConfigGet(dir, c.key)
-		if err != nil {
-			return false, nil //nolint:nilerr // missing key means no match
+	for _, name := range filterSections {
+		for _, kind := range []string{"filter", "diff"} {
+			section := kind + "." + name
+			if err := gitConfig(dir, "--worktree", "--remove-section", section); err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+					continue
+				}
+				return err
+			}
 		}
-		if got != c.want {
-			return false, nil
+	}
+	return nil
+}
+
+// FilterConfigured checks whether all filter/diff config values for both
+// git-crypt and encrypten sections match the expected encrypten values.
+func FilterConfigured(dir string) (bool, error) {
+	for _, section := range filterSections {
+		checks := []struct {
+			key  string
+			want string
+		}{
+			{"filter." + section + ".smudge", filterSmudge},
+			{"filter." + section + ".clean", filterClean},
+			{"filter." + section + ".required", filterReqd},
+			{"diff." + section + ".textconv", diffTextconv},
+		}
+		for _, c := range checks {
+			got, err := gitConfigGet(dir, c.key)
+			if err != nil {
+				return false, nil //nolint:nilerr // missing key means no match
+			}
+			if got != c.want {
+				return false, nil
+			}
 		}
 	}
 	return true, nil
+}
+
+// FilterConfigMatchesGitCrypt is an alias for FilterConfigured for backward compatibility.
+func FilterConfigMatchesGitCrypt(dir string) (bool, error) {
+	return FilterConfigured(dir)
 }
